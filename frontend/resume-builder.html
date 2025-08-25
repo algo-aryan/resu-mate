@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Resume Builder | ResuMate</title>
+  <link rel="stylesheet" href="./upload.css" />
+  <script src="https://cdn.lordicon.com/lordicon.js"></script>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-inner">
+        <a href="dashboard.html" class="logo">
+          <div class="logo-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" fill="currentColor" />
+            </svg>
+          </div>
+          <span class="logo-text">ResuMate</span>
+        </a>
+        <div class="navbar-right">
+          <div class="nav-links">
+            <a href="dashboard.html" class="nav-link">Home</a>
+            <a href="upload.html" class="nav-link">Internships</a>
+            <a href="resume-builder.html" class="nav-link active">Resume Builder</a>
+            <a href="tracker.html" class="nav-link">Tracker</a>
+            <a href="/interview" class="nav-link">Interview</a>
+          </div>
+          <div class="nav-divider"></div>
+          <div class="profile-section">
+            <a href="/profile" class="profile-link">
+              <img src="https://i.pravatar.cc/40" alt="Profile" class="profile-avatar">
+              <span>Profile</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-content">
+    <div class="container">
+      <section class="hero">
+        <h1>Craft Your Perfect Resume, Effortlessly</h1>
+        <p>Just answer a few questions, and our AI-powered chatbot will assemble a professional, well-structured resume for you in minutes.</p>
+      </section>
+
+      <div class="builder-grid">
+        <div class="chat-panel">
+          <div class="chatbox" id="chatbox">
+            </div>
+          <div class="input-box">
+            <input type="text" id="userInput" placeholder="Type your answer...">
+            <button id="sendBtn" aria-label="Send Message">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="currentColor"><path d="M120-160v-640l760 320-760 320Z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="preview-panel">
+          <div id="resumeOutput">
+            <div class="placeholder-text">
+              <h3>Your Resume Preview</h3>
+              <p>As you answer the questions, your resume will be built here in real-time.</p>
+            </div>
+          </div>
+          <button id="downloadBtn" class="cta-button">📥 Download Resume as PDF</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const chatbox = document.getElementById('chatbox');
+    const userInput = document.getElementById('userInput');
+    const resumeOutput = document.getElementById('resumeOutput');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const sendBtn = document.getElementById('sendBtn');
+
+    let currentQuestion = 0;
+    let data = { education: [], experience: [], projects: [] };
+    let temp = {};
+    let waitingForGitHubUsername = false;
+
+    const questions = [
+      { key: 'name', text: "👋 Hi there! I'm ResuMate. Let's build your resume. What's your full name?" },
+      { key: 'email', text: "📧 What's your email?" },
+      { key: 'phone', text: "📱 What's your phone number?" },
+      { key: 'linkedin', text: "🔗 Your LinkedIn profile? (optional)" },
+      { key: 'goal', text: "🎯 What's your career goal?" },
+      { key: 'edu-deg', text: "🎓 Let's start with your education. Degree?" }
+    ];
+
+    function botReply(message, delay = 600) {
+      const msg = document.createElement('div');
+      msg.className = 'message bot';
+      msg.textContent = 'Typing...';
+      chatbox.appendChild(msg);
+      chatbox.scrollTop = chatbox.scrollHeight;
+
+      setTimeout(() => {
+        msg.textContent = message;
+        msg.style.opacity = 1;
+        chatbox.scrollTop = chatbox.scrollHeight;
+      }, delay);
+    }
+
+    function userReply(message) {
+      const msg = document.createElement('div');
+      msg.className = 'message user';
+      msg.textContent = message;
+      chatbox.appendChild(msg);
+      chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const msg = userInput.value.trim();
+      if (!msg) return;
+      userReply(msg);
+      userInput.value = '';
+
+      if (waitingForGitHubUsername) {
+        await importFromGitHub(msg);
+        waitingForGitHubUsername = false;
+        questions.splice(currentQuestion + 1, 0, { key: 'skills', text: '💡 Finally, list your key skills (comma-separated).' });
+        currentQuestion++;
+        botReply(questions[currentQuestion].text);
+        return;
+      }
+
+      const q = questions[currentQuestion];
+
+      if (q?.key === 'edu-deg') {
+        temp.degree = msg;
+        questions.splice(currentQuestion + 1, 0, { key: 'edu-inst', text: '🏫 Institution?' }, { key: 'edu-year', text: '📅 Year?' });
+      } else if (q?.key === 'edu-inst') {
+        temp.institution = msg;
+      } else if (q?.key === 'edu-year') {
+        temp.year = msg;
+        data.education.push(temp);
+        temp = {};
+        questions.splice(currentQuestion + 1, 0, { key: 'more-edu', text: '➕ Add more education? (yes/no)' });
+      } else if (q?.key === 'more-edu') {
+        if (msg.toLowerCase().startsWith('y')) {
+          questions.splice(currentQuestion + 1, 0, { key: 'edu-deg', text: '🎓 Degree?' });
+        } else {
+          questions.splice(currentQuestion + 1, 0, { key: 'exp-role', text: '💼 Let’s add your work experience. Role?' });
+        }
+      } else if (q?.key === 'exp-role') {
+        temp.role = msg;
+        questions.splice(currentQuestion + 1, 0, { key: 'exp-comp', text: '🏢 Company?' }, { key: 'exp-year', text: '📅 Year?' }, { key: 'exp-desc', text: '📄 Describe your responsibilities.' });
+      } else if (q?.key === 'exp-comp') {
+        temp.company = msg;
+      } else if (q?.key === 'exp-year') {
+        temp.year = msg;
+      } else if (q?.key === 'exp-desc') {
+        temp.description = msg;
+        data.experience.push(temp);
+        temp = {};
+        questions.splice(currentQuestion + 1, 0, { key: 'more-exp', text: '➕ Add more experience? (yes/no)' });
+      } else if (q?.key === 'more-exp') {
+        if (msg.toLowerCase().startsWith('y')) {
+          questions.splice(currentQuestion + 1, 0, { key: 'exp-role', text: '💼 Another Role?' });
+        } else {
+          questions.splice(currentQuestion + 1, 0, { key: 'proj-import-or-add', text: '💡 Projects next. Import from GitHub or add manually? (type "github" or "add")' });
+        }
+      } else if (q?.key === 'proj-import-or-add') {
+        if (msg.toLowerCase().includes('github')) {
+          botReply("Please enter your GitHub username.");
+          waitingForGitHubUsername = true;
+          return;
+        } else if (msg.toLowerCase().includes('add')) {
+          questions.splice(currentQuestion + 1, 0, { key: 'proj-title', text: '💡 Great! Project title?' });
+        } else {
+          botReply('Please type "github" or "add".');
+          return;
+        }
+      } else if (q?.key === 'proj-title') {
+        temp.title = msg;
+        questions.splice(currentQuestion + 1, 0, { key: 'proj-desc', text: '📝 Briefly describe this project.' });
+      } else if (q?.key === 'proj-desc') {
+        temp.description = msg;
+        data.projects.push(temp);
+        temp = {};
+        questions.splice(currentQuestion + 1, 0, { key: 'more-proj', text: '➕ Add another project manually? (yes/no)' });
+      } else if (q?.key === 'more-proj') {
+        if (msg.toLowerCase().startsWith('y')) {
+          questions.splice(currentQuestion + 1, 0, { key: 'proj-title', text: '💡 Project Title?' });
+        } else {
+          questions.splice(currentQuestion + 1, 0, { key: 'skills', text: '💡 Finally, list your key skills (comma-separated).' });
+        }
+      } else if (q?.key === 'skills') {
+        data.skills = msg;
+        generateResume();
+        return;
+      } else if (q) {
+        data[q.key] = msg;
+      }
+
+      currentQuestion++;
+      if (currentQuestion < questions.length) {
+        botReply(questions[currentQuestion].text);
+      }
+    }
+
+    async function generateResume() {
+      botReply("🛠 Generating your resume...");
+      sendBtn.disabled = true;
+
+      try {
+        const response = await fetch('https://resumate-ewtu.onrender.com/api/generate-resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            if (response.status === 429) {
+                botReply("⚠️ AI assistant is currently unavailable due to quota limits. Please try again later.");
+            } else {
+                botReply("❌ Error generating your resume. Please check the console or try again.");
+            }
+            console.error(`Server error ${response.status}: ${errorText}`);
+            return;
+        }
+
+        const html = await response.text();
+        resumeOutput.innerHTML = html;
+        window.generatedResumeHTML = html;
+        downloadBtn.style.display = 'block';
+        botReply("✅ Done! Review and download your resume.");
+
+      } catch (error) {
+        console.error("Network or unexpected error:", error);
+        botReply("❌ A network error occurred. Please check your connection and try again.");
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    // --- CORRECTED FUNCTION ---
+    async function importFromGitHub(username) {
+      botReply(`🔍 Checking GitHub for user "${username}"...`);
+      try {
+        const res = await fetch(`https://resumate-ewtu.onrender.com/api/import/github/${username}`);
+        const result = await res.json();
+
+        // Check for an explicit error message from the backend, or if the user was not found (res.status === 404)
+        if (!res.ok || result.error) {
+          botReply(result.error || `❌ Could not find a GitHub user with that name. Please check the username and try again.`);
+          return; // Stop the function here
+        }
+
+        // Check if projects array is empty, which means the user exists but has no public repos
+        if (!result.projects || result.projects.length === 0) {
+          botReply(`✅ Found user "${username}", but they have no public repositories to import.`);
+          return;
+        }
+
+        // If successful, process the projects
+        if (!Array.isArray(data.projects)) data.projects = [];
+        result.projects.forEach(p => {
+          if (p.title && p.description) {
+            data.projects.push({ title: p.title, description: p.description });
+          }
+        });
+        botReply(`✅ Successfully imported ${result.projects.length} projects!`);
+
+      } catch (error) {
+        console.error("GitHub import error:", error);
+        botReply("❌ A network error occurred while importing from GitHub. Please check your connection.");
+      }
+    }
+
+
+    downloadBtn.addEventListener("click", async () => {
+      botReply("📥 Preparing your PDF...");
+      downloadBtn.disabled = true;
+      try {
+        const response = await fetch("https://resumate-ewtu.onrender.com/api/download-resume-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ html: window.generatedResumeHTML })
+        });
+
+        if (!response.ok) {
+            throw new Error(`PDF generation failed: Server status ${response.status}`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "ResuMate_Resume.pdf";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        botReply("Download should start shortly! 🎉");
+      } catch (error) {
+        console.error("Error downloading PDF:", error);
+        botReply("❌ Couldn't create the PDF. Please try again.");
+      } finally {
+        downloadBtn.disabled = false;
+      }
+    });
+
+    sendBtn.addEventListener("click", sendMessage);
+    userInput.addEventListener("keypress", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    window.onload = () => {
+      botReply(questions[0].text);
+    };
+  </script>
+</body>
+</html>
